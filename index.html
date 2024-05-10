@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <title>GPS Points Generator</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            display: flex;
+            height: 100%;
+        }
+
+        .left {
+            display: flex;
+            flex-direction: column;
+            width: 30%;
+        }
+
+        #map {
+            width: 70%;
+            height: 100%;
+            width: 100%;
+        }
+
+        .controls {
+            background-color: lightgray;
+            padding: 10px;
+            position: sticky;
+            top: 0;
+        }
+
+        .output {
+            height: 50%;
+            background-color: lightblue;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left">
+            <div class="controls">
+                <p>Speed</p>
+                <input type="range" id="speed" name="speed" min="1" max="100" step="0.5" value="60">
+                <span id="speedValue"></span>
+            </div>
+            <div class="controls">
+                <p>Sample Time</p>
+                <input type="range" id="sampleTime" name="sampleTime" min="500" max="5000" step="100" value="1000">
+                <span id="sampleTimeValue"></span>
+            </div>
+            <div class="controls">
+                <p>Waypoints</p>
+                <table id="waypoints">
+                    <tr>
+                        <th>#</th>
+                        <th>Latitude</th>
+                        <th>Longitude</th>
+                        <th>Distance (km)</th>
+                    </tr>
+                </table>
+            </div>
+            <div class="controls">
+                <button id="clear">Clear</button>
+                <button id="calculate">Generate Points</button>
+                <input type="checkbox" id="showAllPoints" disabled> <label for="showAllPoints">Show all points</label>
+            </div>
+            <div class="output">
+                <table id="outputTable">
+                    <tr>
+                        <th>#</th>
+                        <th>Lat</th>
+                        <th>Lon</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <div id="map"></div>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([45.11968, 7.74133], 17);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+        }).addTo(map);
+
+        var speedSlider = document.getElementById("speed");
+        var speedValue = document.getElementById("speedValue");
+
+        var sampleTimeSlider = document.getElementById("sampleTime");
+        var sampleTimeValue = document.getElementById("sampleTimeValue");
+
+        var waypointsTable = document.getElementById("waypoints");
+        var waypointCounter = 1;
+        var waypoints = [];
+
+        var clearButton = document.getElementById("clear");
+        var calculateButton = document.getElementById("calculate");
+        var showAllPointsCheckbox = document.getElementById("showAllPoints");
+        var outputTable = document.getElementById("outputTable");
+
+        function updateSpeedValue() {
+            var speedKmH = speedSlider.value;
+            var speedMS = (speedKmH * 1000) / 3600;
+            speedValue.textContent = speedKmH + " Km/h [" + speedMS.toFixed(2) + " m/s]";
+        }
+
+        function updateSampleTimeValue() {
+            var sampleTimeMs = sampleTimeSlider.value;
+            sampleTimeValue.textContent = sampleTimeMs + " ms";
+        }
+
+        function addWaypoint(lat, lon) {
+            var row = waypointsTable.insertRow();
+            var cell1 = row.insertCell(0);
+            var cell2 = row.insertCell(1);
+            var cell3 = row.insertCell(2);
+            var cell4 = row.insertCell(3);
+            cell1.textContent = waypointCounter++;
+            cell2.textContent = lat.toFixed(6);
+            cell3.textContent = lon.toFixed(6);
+            waypoints.push({ lat: lat, lon: lon });
+            cell4.textContent = calculateDistance();
+        }
+
+        function calculateDistance() {
+            if (waypoints.length <= 1) {
+                return "-";
+            }
+            var totalDistance = 0;
+            for (var i = 1; i < waypoints.length; i++) {
+                var lat1 = waypoints[i - 1].lat;
+                var lon1 = waypoints[i - 1].lon;
+                var lat2 = waypoints[i].lat;
+                var lon2 = waypoints[i].lon;
+                var distance = getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2);
+                totalDistance += distance;
+            }
+            return totalDistance.toFixed(2);
+        }
+
+        function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+            var R = 6371; // Radius of the earth in km
+            var dLat = deg2rad(lat2 - lat1);  // deg2rad below
+            var dLon = deg2rad(lon2 - lon1);
+            var a =
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            var d = R * c; // Distance in km
+            return d;
+        }
+
+        function deg2rad(deg) {
+            return deg * (Math.PI / 180);
+        }
+
+        function onMapClick(e) {
+            var marker = L.marker(e.latlng).addTo(map);
+            addWaypoint(e.latlng.lat, e.latlng.lng);
+        }
+
+        function clearWaypoints() {
+            waypointsTable.innerHTML = "<tr><th>#</th><th>Latitude</th><th>Longitude</th><th>Distance (km)</th></tr>";
+            waypointCounter = 1;
+            waypoints = [];
+            map.eachLayer(function (layer) {
+                if (layer instanceof L.Marker) {
+                    map.removeLayer(layer);
+                }
+            });
+            showAllPointsCheckbox.disabled = true;
+            showAllPointsCheckbox.checked = false;
+            outputTable.innerHTML = "<tr><th>#</th><th>Lat</th><th>Lon</th><th>Timestamp</th></tr>";
+        }
+
+        speedSlider.addEventListener("input", updateSpeedValue);
+        sampleTimeSlider.addEventListener("input", updateSampleTimeValue);
+        map.on("click", onMapClick);
+
+        function generatePoints() {
+            var speedKmH = parseFloat(speedSlider.value);
+            var speedMS = (speedKmH * 1000) / 3600;
+            var sampleTimeMs = parseInt(sampleTimeSlider.value);
+            var timestamp = 0;
+
+            for (var i = 1; i < waypoints.length; i++) {
+                var lat1 = waypoints[i - 1].lat;
+                var lon1 = waypoints[i - 1].lon;
+                var lat2 = waypoints[i].lat;
+                var lon2 = waypoints[i].lon;
+                var distance = getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2);
+                var time = (distance * 1000 / speedMS) * 1000;
+                var numPoints = Math.floor(time / sampleTimeMs);
+                console.log("Speed: " + speedKmH + " km/h, Speed: " + speedMS + " m/s, Sample time: " + sampleTimeMs + " ms");
+                console.log("Distance: " + distance + " km, Time: " + time + " ms, Num points: " + numPoints);
+                
+                for (var j = 0; j < numPoints; j++) {
+                    var fraction = (j + 1) / (numPoints + 1);
+                    var lat = lat1 + (lat2 - lat1) * fraction;
+                    var lon = lon1 + (lon2 - lon1) * fraction;
+                    var row = outputTable.insertRow();
+                    var cell1 = row.insertCell(0);
+                    var cell2 = row.insertCell(1);
+                    var cell3 = row.insertCell(2);
+                    var cell4 = row.insertCell(3);
+                    cell1.textContent = outputTable.rows.length - 1;
+                    cell2.textContent = lat.toFixed(6);
+                    cell3.textContent = lon.toFixed(6);
+                    cell4.textContent = timestamp;
+                    timestamp += sampleTimeMs;
+                }
+            }
+
+            showAllPointsCheckbox.disabled = false;
+        }
+
+        calculateButton.addEventListener("click", function () {
+            generatePoints();
+        });
+
+        clearButton.addEventListener("click", function () {
+            clearWaypoints();
+        });
+
+        showAllPointsCheckbox.addEventListener("change", function () {
+            map.eachLayer(function (layer) {
+                if (layer instanceof L.Marker) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            if (showAllPointsCheckbox.checked) {
+                for (var i = 1; i < outputTable.rows.length; i++) {
+                    var lat = parseFloat(outputTable.rows[i].cells[1].textContent);
+                    var lon = parseFloat(outputTable.rows[i].cells[2].textContent);
+                    var marker = L.marker([lat, lon]).addTo(map);
+                }
+            }
+        });
+
+        // Show speed and sample time values on page load
+        updateSpeedValue();
+        updateSampleTimeValue();
+    </script>
+</body>
+</html>
